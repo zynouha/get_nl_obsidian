@@ -33,6 +33,32 @@ int close(int fd);
 
 The parameter `fd` is the file descriptor returned by `open()`. When a file is opened, the operating system allocates resources to manage it, and calling `close(fd)` releases those resources once the file is no longer needed. If the function succeeds, it returns 0. If an error occurs (for example, the file descriptor is invalid or already closed), it returns -1 and `errno` is set to indicate the specific error.
 
+##### What is errno ?
+
+`errno` is a special **global variable** (an integer) that C and the operating system use to tell you **why** a function failed.
+
+**How it works*
+
+1. You call a function (like `open()`).
+2. The function fails and returns `-1` (or `NULL`, depending on the function).
+3. Before returning, the system sets `errno` to a number that describes the problem.
+4. You read `errno` to find out what happened.
+
+c
+
+```c
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+
+int main(void) {
+    int fd = open("missing.txt", O_RDONLY);
+    if (fd == -1) {
+        printf("errno = %d\n", errno);   // prints: errno = 2
+    }
+    return 0;
+}
+```
 # perror()
 *function*
 The `perror()` function in C is a standard library function used to display a descriptive, human-readable message for the most recent system error. It is declared in the `<stdio.h>` header with the prototype:
@@ -245,7 +271,7 @@ close(re);
 ```
 
 - **lseek():**
-Every open file has a current offset that determines where the next `read()` or `write()` will happen, and `lseek()` lets you move it without reading or writing any data.It is declared in the header `<unistd.h>`
+Every open file has a current **offset** that determines where the next `read()` or `write()` will happen, and `lseek()` lets you move it without reading or writing any data.It is declared in the header `<unistd.h>`
 `lseek()` function in C is a low-level POSIX system call used to change the position of the file offset (the “cursor”) of an open file descriptor.
    -**Prototype:**
 
@@ -263,6 +289,11 @@ off_t lseek(int fd, off_t offset, int whence);
     - `SEEK_SET`: from the beginning of the file.
     - `SEEK_CUR`: from the current offset.
     - `SEEK_END`: from the end of the file.
+
+###### - NB:
+
+The offset does not reset on its own—you must manually move it back using lseek() or reopen the file. This behavior is what makes sequential reading possible, as the file descriptor always remembers where the next read should continue.
+
 ### what is a buffer?
 A **buffer** is a temporary area of memory used to hold data while it is being moved from one place to another. Instead of handling data one byte at a time, a program collects it in the buffer and processes it in larger chunks.
 
@@ -272,3 +303,115 @@ A **buffer** is a temporary area of memory used to hold data while it is being m
 | --------------- | --------------------------------------- | ---------------------------- |
 | Your own buffer | The array you declare (`char buf[100]`) | You                          |
 | Stream buffer   | Inside a `FILE *`                       | The C library, automatically |
+
+---
+# File Descriptors in C
+
+### What is a file descriptor?
+
+A **file descriptor** (often called **fd**) is a small non-negative integer that the operating system gives your program to represent an open file, or anything that acts like a file.
+When you call `open("test.txt", O_WRONLY)`, the kernel picks the lowest unused number (usually 3, because 0, 1, and 2 are already used by stdin, stdout, and stderr) and returns it to you. You then pass this number to `read()`, `write()`, and `close()`.
+
+In Unix-like systems (Linux, macOS, BSD), "everything is a file." So file descriptors work for:
+
+- Regular files
+- Directories
+- Terminals (keyboard and screen)
+- Pipes
+- Network sockets
+- Devices (like `/dev/null`)
+### The three default file descriptors
+
+Every program starts with three already open:
+
+| Number | Name            | Macro           | Purpose                 |     |
+| ------ | --------------- | --------------- | ----------------------- | --- |
+| 0      | Standard input  | `STDIN_FILENO`  | Reads input (keyboard)  |     |
+| 1      | Standard output | `STDOUT_FILENO` | Normal output (screen)  |     |
+| 2      | Standard error  | `STDERR_FILENO` | Error messages (screen) |     |
+When you open a new file, the OS gives you the **lowest unused number**, usually 3.
+
+### How it works inside the OS ?
+
+There are three layers:
+
+1. **Per-process fd table**: each process has its own table. fd 3 in your program is not the same as fd 3 in another program.
+2. **Open file table (system-wide)**: each entry stores the current position in the file (offset), the access mode, and flags.
+3. **Inode table**: the actual file information on disk.
+
+![[fd_to_inode_structures 2.svg|726]]
+---
+#### File Descriptor Limits
+
+Linux limits how many files, sockets, and other I/O resources can be open at the same time. There are two levels:
+
+- **System-wide limit**: shown in `/proc/sys/fs/file-max`. It is the total number of file handles the kernel can allocate across all processes.
+- **Per-process limit**: shown with `ulimit -n`. It stops a single program from using up all the resources.
+
+Even if the system-wide limit is set to a huge value, such as 2^63 - 1, the real limit is lower, because every open file uses kernel memory. These limits keep the system stable, so the kernel does not run out of memory or file table entries when many processes run at once.
+
+###### File Offset and EOF
+
+Each open file description keeps an **offset**, which is the current position inside the file. When you call `read()`, the kernel reads from that offset and then moves it forward by the number of bytes read.
+
+This means that after you read a file to the end, the offset stays at the end. Any further `read()` returns **0**, which means **EOF** (End Of File), because there is nothing left to read. To read the file again, move the offset back with `lseek(fd, 0, SEEK_SET)`, or open the file again.
+
+---
+
+## Static Variables in C
+
+A **static variable** is a variable that **keeps its value** for the whole life of the program, even after the function or block where it was declared has finished.
+
+Think of it like a **notebook that stays on your desk**. A normal (local) variable is like a sticky note: when you leave the function, the note is thrown away. A static variable is a notebook: you come back later and your old notes are still there.
+
+The keyword is `static`:
+
+c
+
+```c
+static int counter = 0;
+```
+
+##### The problem it solves
+
+Normal local variables are created when a function starts and destroyed when it ends:
+
+c
+
+```c
+#include <stdio.h>
+
+void count(void) {
+    int n = 0;      // created fresh every call
+    n++;
+    printf("%d\n", n);
+}
+
+int main(void) {
+    count();   // 1
+    count();   // 1
+    count();   // 1
+    return 0;
+}
+```
+
+Every call prints `1`, because `n` is reset each time. With `static`:
+
+c
+
+```c
+void count(void) {
+    static int n = 0;   // created ONCE, kept forever
+    n++;
+    printf("%d\n", n);
+}
+
+int main(void) {
+    count();   // 1
+    count();   // 2
+    count();   // 3
+    return 0;
+}
+```
+
+Now it remembers. The value survives between calls.
