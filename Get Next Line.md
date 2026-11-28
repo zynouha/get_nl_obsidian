@@ -1,4 +1,3 @@
-# open()
 *syscall*
 The `open()` function in C is a low-level system call used to open files for reading, writing, or both. It is declared in the header `<fcntl.h>` with the prototype:
 
@@ -362,7 +361,6 @@ This means that after you read a file to the end, the offset stays at the end. A
 
 A **static variable** is a variable that **keeps its value** for the whole life of the program, even after the function or block where it was declared has finished.
 
-Think of it like a **notebook that stays on your desk**. A normal (local) variable is like a sticky note: when you leave the function, the note is thrown away. A static variable is a notebook: you come back later and your old notes are still there.
 
 The keyword is `static`:
 
@@ -372,6 +370,9 @@ c
 static int counter = 0;
 ```
 
+![[Pasted image 20261122221043.png]]
+
+**a static variable** is stored in a fixed place in memory (the data/BSS segment), not on the stack. That place is created when the program starts and stays until the program ends, so it isn't destroyed when the function returns.
 ##### The problem it solves
 
 Normal local variables are created when a function starts and destroyed when it ends:
